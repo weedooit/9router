@@ -30,3 +30,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+
+# Dokploy may write an environment file beside a nested Compose file.
+**/.env
+**/.env.*

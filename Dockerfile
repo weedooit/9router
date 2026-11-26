@@ -31,6 +31,7 @@ RUN --mount=type=cache,target=/root/.npm \
 
 COPY . ./
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_OPTIONS=--max-old-space-size=3072
 RUN npm run build
 
 # https://github.com/decolua/9router/issues/5245
@@ -69,6 +70,7 @@ ENV HOSTNAME=0.0.0.0
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV DATA_DIR=/app/data
 
+COPY --from=builder /app/LICENSE /app/LICENSE
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/.next/standalone ./
@@ -98,6 +100,8 @@ RUN mkdir -p /app/data && chown -R node:node /app && \
 RUN apk add --no-cache su-exec ffmpeg && \
   printf '#!/bin/sh\nchown -R node:node /app/data /app/data-home 2>/dev/null\nexec su-exec node "$@"\n' > /entrypoint.sh && \
   chmod +x /entrypoint.sh
+
+RUN test -s /app/.next/server/app/api/v1/ocr/route.js
 
 EXPOSE 20128
 
