@@ -24,6 +24,7 @@ import { getErrorCode, getRelativeTime } from "@/shared/utils";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
 import ModelAvailabilityBadge from "./components/ModelAvailabilityBadge";
+import OcrProviderModal from "./components/OcrProviderModal";
 import AddCompatibleModal from "./components/AddCompatibleModal";
 import { STATUS_FILTER_OPTIONS, matchesStatusFilter } from "./utils";
 
@@ -98,6 +99,9 @@ const APIKEY_INITIAL_VISIBLE = 20;
 
 export default function ProvidersPage() {
   const [connections, setConnections] = useState([]);
+  const [ocrProviders, setOcrProviders] = useState([]);
+  const [ocrEditor, setOcrEditor] = useState(null);
+  const [ocrLoadError, setOcrLoadError] = useState(false);
   const [providerNodes, setProviderNodes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAllApikey, setShowAllApikey] = useState(false);
@@ -168,6 +172,12 @@ export default function ProvidersPage() {
       }
     };
     fetchData();
+    fetch("/api/provider-nodes/ocr", { cache: "no-store" })
+      .then(async response => {
+        if (!response.ok) throw new Error();
+        setOcrProviders((await response.json()).providers);
+      })
+      .catch(() => setOcrLoadError(true));
   }, []);
 
   const getProviderStats = (providerId, authType) => {
@@ -213,6 +223,9 @@ export default function ProvidersPage() {
 
     return { connected, error, total, errorCode, errorTime, allDisabled };
   };
+
+  const visibleOcrProviders = ocrProviders.filter(p =>
+    (statusFilter === "all" || statusFilter === "active") && matchSearch([p.name, p.id, ...p.models.map(m => m.id)].join(" ")));
 
   const matchStatus = (stats, isNoAuth) =>
     matchesStatusFilter(statusFilter, stats, isNoAuth);
@@ -434,9 +447,16 @@ export default function ProvidersPage() {
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-lg sm:text-xl font-semibold flex items-center gap-2 leading-tight">
-            Custom Providers (OpenAI/Anthropic Compatible){" "}
+            Custom Providers
           </h2>
           <div className="grid grid-cols-1 gap-2 sm:flex sm:w-auto">
+            <Button
+              size="sm"
+              icon="add"
+              onClick={() => setOcrEditor({})}
+            >
+              Add OCR Compatible
+            </Button>
             <Button
               size="sm"
               icon="add"
@@ -456,11 +476,10 @@ export default function ProvidersPage() {
             </Button>
           </div>
         </div>
-        {compatibleProviders.length === 0 &&
-        anthropicCompatibleProviders.length === 0 ? (
+        {compatibleProviders.length === 0 && anthropicCompatibleProviders.length === 0 && visibleOcrProviders.length === 0 ? (
           <div className="flex items-center justify-center gap-2 py-2 border border-dashed border-border rounded-xl text-text-muted text-sm">
             <span className="material-symbols-outlined text-[18px]">extension</span>
-            <span>No custom providers — use buttons above to add OpenAI/Anthropic compatible endpoints</span>
+            <span>No matching custom providers</span>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
@@ -481,6 +500,28 @@ export default function ProvidersPage() {
           </div>
         )}
       </div>
+
+      {(visibleOcrProviders.length > 0 || ocrLoadError) && (
+        <section aria-labelledby="ocr-providers-heading" className="flex flex-col gap-4">
+          <h2 id="ocr-providers-heading" className="flex items-center gap-2 text-lg font-semibold sm:text-xl">
+            <span aria-hidden="true" className="material-symbols-outlined text-primary">document_scanner</span>
+            OCR Providers
+          </h2>
+          {ocrLoadError && <p role="alert" className="text-sm text-red-500">Could not load OCR providers.</p>}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+            {visibleOcrProviders.map(p => (
+              <button key={p.id} type="button" onClick={() => setOcrEditor({ existing: p })}
+                className="flex min-w-0 items-center gap-3 rounded-xl border border-border bg-surface p-4 text-left hover:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary">
+                <span aria-hidden="true" className="material-symbols-outlined rounded-lg bg-primary/10 p-2 text-primary">document_scanner</span>
+                <span className="min-w-0">
+                  <span className="block truncate font-semibold">{p.name}</span>
+                  <span className="block truncate text-xs text-text-muted">{p.id} · {p.models.length} {p.models.length === 1 ? "model" : "models"}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* OAuth Providers */}
       {oauthEntries.length > 0 && (
@@ -650,6 +691,11 @@ export default function ProvidersPage() {
       </div>
       )}
 
+      {ocrEditor && <OcrProviderModal existing={ocrEditor.existing} onClose={() => setOcrEditor(null)}
+        onSaved={saved => {
+          setOcrProviders(current => [...current.filter(p => p.id !== saved.id), saved]);
+          setOcrEditor(null);
+        }} />}
       <AddCompatibleModal
         variant="openai"
         isOpen={showAddCompatibleModal}

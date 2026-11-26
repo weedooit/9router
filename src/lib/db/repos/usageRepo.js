@@ -220,13 +220,14 @@ export async function getActiveRequests() {
     .map((e) => {
       const t = e.tokens || {};
       return {
-        timestamp: e.timestamp, model: e.model, provider: e.provider || "",
+        timestamp: e.timestamp, model: e.model, provider: e.provider || "", endpoint: e.endpoint,
         promptTokens: t.prompt_tokens || t.input_tokens || 0,
         completionTokens: t.completion_tokens || t.output_tokens || 0,
         status: e.status || "ok",
       };
     })
     .filter((e) => {
+      if (e.endpoint === "/v1/ocr") return true;
       if (e.promptTokens === 0 && e.completionTokens === 0) return false;
       const minute = e.timestamp ? e.timestamp.slice(0, 16) : "";
       const key = `${e.model}|${e.provider}|${e.promptTokens}|${e.completionTokens}|${minute}`;
@@ -273,7 +274,8 @@ export async function saveRequestUsage(entry) {
         ]
       );
 
-      if (existing) {
+      // OCR records each completed page once, including pages finishing in the same millisecond.
+      if (existing && entry.endpoint !== "/v1/ocr") {
         if (!existing.endpoint && entry.endpoint) {
           db.run(`UPDATE usageHistory SET endpoint = ? WHERE id = ?`, [entry.endpoint, existing.id]);
         }
@@ -365,6 +367,9 @@ export async function getUsageStats(period = "all") {
     for (const n of nodes) if (n.id && n.name) providerNodeNameMap[n.id] = n.name;
   } catch {}
 
+  const { listOcrProviders } = await import("@/lib/ocr/providers.js");
+  for (const p of await listOcrProviders()) providerNodeNameMap[p.id] = p.name;
+
   let allApiKeys = [];
   try { allApiKeys = await getApiKeys(); } catch {}
   const apiKeyMap = {};
@@ -373,13 +378,13 @@ export async function getUsageStats(period = "all") {
   }
 
   // recentRequests from live history (last 100 entries enough for 20 deduped)
-  const recentRows = db.all(`SELECT timestamp, provider, model, tokens, status FROM usageHistory ORDER BY id DESC LIMIT 100`);
+  const recentRows = db.all(`SELECT timestamp, provider, model, tokens, status, endpoint FROM usageHistory ORDER BY id DESC LIMIT 100`);
   const seen = new Set();
   const recentRequests = recentRows
     .map((r) => {
       const t = parseJson(r.tokens, {}) || {};
       return {
-        timestamp: r.timestamp, model: r.model, provider: r.provider || "",
+        timestamp: r.timestamp, model: r.model, provider: r.provider || "", endpoint: r.endpoint,
         promptTokens: t.prompt_tokens || t.input_tokens || 0,
         completionTokens: t.completion_tokens || t.output_tokens || 0,
         cachedTokens: t.cached_tokens || t.cache_read_input_tokens || 0,
@@ -387,6 +392,7 @@ export async function getUsageStats(period = "all") {
       };
     })
     .filter((e) => {
+      if (e.endpoint === "/v1/ocr") return true;
       if (e.promptTokens === 0 && e.completionTokens === 0) return false;
       const minute = e.timestamp ? e.timestamp.slice(0, 16) : "";
       const key = `${e.model}|${e.provider}|${e.promptTokens}|${e.completionTokens}|${minute}`;

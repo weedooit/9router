@@ -79,6 +79,7 @@ export default function ModelSelectModal({
   onDeselectBatch,
   selectedModel,
   activeProviders = [],
+  ocrProviders = [],
   title = "Select Model",
   size = "lg",
   modelAliases = {},
@@ -512,8 +513,11 @@ export default function ModelSelectModal({
       }
     });
 
+    for (const p of ocrProviders) {
+      groups[p.id] = { name: p.name, alias: p.id, models: p.models.map(m => ({ id: m.id, name: m.id, value: p.id + "/" + m.id })) };
+    }
     return groups;
-  }, [filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, effectiveConnections, deactivatedProviderIds, cursorModels, clineModels, clinepassModels, zedModels, claudeModels, commandcodeModels]);
+  }, [ocrProviders, filteredActiveProviders, modelAliases, allProviders, providerNodes, customModels, disabledModels, kindFilter, effectiveConnections, deactivatedProviderIds, cursorModels, clineModels, clinepassModels, zedModels, claudeModels, commandcodeModels]);
 
   // Parse search query into structured query (regex, positive tokens, negative tokens)
   const parsedQuery = useMemo(() => parseSearchQuery(searchQuery), [searchQuery]);
@@ -880,6 +884,7 @@ ModelSelectModal.propTypes = {
   onSelectBatch: PropTypes.func,
   onDeselectBatch: PropTypes.func,
   selectedModel: PropTypes.string,
+  ocrProviders: PropTypes.array,
   activeProviders: PropTypes.arrayOf(
     PropTypes.shape({
       provider: PropTypes.string.isRequired,

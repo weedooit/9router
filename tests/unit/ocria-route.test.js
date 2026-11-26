@@ -6,6 +6,7 @@ vi.mock("@/sse/services/keyAccess.js", () => ({
   getKeyAccessContext: vi.fn(),
   enforceKeyAccessResolved: vi.fn(),
 }));
+vi.mock("@/lib/db/driver.js", () => ({ getAdapter: async () => ({ get: () => null }) }));
 vi.mock("@/lib/usageDb.js", () => ({ saveRequestUsage: vi.fn() }));
 
 import { POST } from "../../src/app/api/v1/ocr/route.js";

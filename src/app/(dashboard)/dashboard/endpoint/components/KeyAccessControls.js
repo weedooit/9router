@@ -11,6 +11,7 @@ import { Toggle, ModelSelectModal } from "@/shared/components";
 export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict }) {
   const access = apiKey.access || { restricted: false, allow: [] };
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [ocrProviders, setOcrProviders] = useState([]);
   const [activeProviders, setActiveProviders] = useState([]);
   const [modelAliases, setModelAliases] = useState({});
 
@@ -18,7 +19,10 @@ export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict 
     setPickerOpen(true);
     // Same sources the combo editor feeds the picker with.
     try {
-      const [providersRes, aliasRes] = await Promise.all([fetch("/api/providers"), fetch("/api/models/alias")]);
+      const [providersRes, aliasRes, ocrRes] = await Promise.all([
+        fetch("/api/providers"), fetch("/api/models/alias"), fetch("/api/provider-nodes/ocr"),
+      ]);
+      if (ocrRes.ok) setOcrProviders((await ocrRes.json()).providers || []);
       if (providersRes.ok) setActiveProviders((await providersRes.json()).connections || []);
       if (aliasRes.ok) setModelAliases((await aliasRes.json()).aliases || {});
     } catch (error) {
@@ -75,6 +79,7 @@ export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict 
           onSelect={add}
           onDeselect={(model) => remove(access.allow.find((e) => e.toLowerCase() === String(model?.value).toLowerCase()))}
           activeProviders={activeProviders}
+          ocrProviders={ocrProviders}
           modelAliases={modelAliases}
           title={`Allowed for "${apiKey.name}"`}
           addedModelValues={access.allow}

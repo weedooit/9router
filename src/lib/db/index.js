@@ -1,4 +1,5 @@
 // Public API barrel — all DB functions
+import { writeOcrProvider } from "@/lib/ocr/providers.js";
 import { getAdapter } from "./driver.js";
 import { stringifyJson, parseJson } from "./helpers/jsonCol.js";
 import { keyAccessFromColumns, keyAccessToColumns, validateKeyAccessInput } from "@/shared/utils/keyAccess.js";
@@ -81,6 +82,7 @@ export async function exportDb() {
     proxyPools: db.all(`SELECT * FROM proxyPools`).map((r) => ({ ...parseJson(r.data, {}), id: r.id, isActive: r.isActive === 1, testStatus: r.testStatus, createdAt: r.createdAt, updatedAt: r.updatedAt })),
     apiKeys: db.all(`SELECT * FROM apiKeys`).map((r) => ({ id: r.id, key: r.key, name: r.name, machineId: r.machineId, isActive: r.isActive === 1, createdAt: r.createdAt, access: keyAccessFromColumns(r.accessRestricted, r.accessAllow) })),
     combos: db.all(`SELECT * FROM combos`).map((r) => ({ id: r.id, name: r.name, kind: r.kind, models: parseJson(r.models, []), createdAt: r.createdAt, updatedAt: r.updatedAt })),
+    ocrProviders: db.all("SELECT value FROM kv WHERE scope = 'ocrProviders' ORDER BY key").map(row => parseJson(row.value)),
     modelAliases: {},
     customModels: [],
     mitmAlias: {},
@@ -110,6 +112,12 @@ export async function importDb(payload) {
     db.run(`DELETE FROM apiKeys`);
     db.run(`DELETE FROM combos`);
     db.run(`DELETE FROM kv WHERE scope IN ('modelAliases', 'customModels', 'mitmAlias', 'pricing')`);
+
+    if (payload.ocrProviders !== undefined) {
+      if (!Array.isArray(payload.ocrProviders)) throw new Error("Invalid OCR providers in backup");
+      db.run("DELETE FROM kv WHERE scope = 'ocrProviders'");
+      for (const provider of payload.ocrProviders) writeOcrProvider(db, provider, null);
+    }
 
     // Settings
     if (payload.settings) {

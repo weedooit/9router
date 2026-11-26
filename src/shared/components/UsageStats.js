@@ -70,7 +70,7 @@ function RecentRequests({ requests = [] }) {
                     <td className="py-1.5">
                       <span className={`block w-1.5 h-1.5 rounded-full ${ok ? "bg-success" : "bg-error"}`} />
                     </td>
-                    <td className="py-1.5 font-mono truncate max-w-[120px]" title={r.model}>{r.model}</td>
+                    <td className="py-1.5 font-mono truncate max-w-[120px]" title={r.model}>{r.endpoint === "/v1/ocr" ? r.provider + "/" + r.model : r.model}</td>
                     <td className="py-1.5 text-right whitespace-nowrap">
                       <span className="text-primary">{fmt(r.promptTokens)}↑</span>
                       {" "}
@@ -228,8 +228,9 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
     Promise.all([
       fetch("/api/providers").then((r) => r.ok ? r.json() : null),
       fetch("/api/provider-nodes").then((r) => r.ok ? r.json() : null),
+      fetch("/api/provider-nodes/ocr").then((r) => r.ok ? r.json() : null),
     ])
-      .then(([d, nodesData]) => {
+      .then(([d, nodesData, ocrData]) => {
         // Build node name lookup for custom providers
         const nodeNameMap = {};
         for (const node of (nodesData?.nodes || [])) {
@@ -250,7 +251,8 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
         const noAuthProviders = Object.values(FREE_PROVIDERS)
           .filter((p) => p.noAuth && !p.hidden && !seen.has(p.id) && isLLMProvider(p.id))
           .map((p) => ({ provider: p.id, name: p.name }));
-        setProviders([...unique, ...noAuthProviders]);
+        const ocrProviders = (ocrData?.providers || []).map(p => ({ provider: p.id, name: p.name, nodeName: p.name }));
+        setProviders([...unique, ...noAuthProviders, ...ocrProviders]);
       })
       .catch(() => {});
   }, []);
