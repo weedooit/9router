@@ -40,6 +40,7 @@ it("returns the upstream JSON bytes and records one completed page", async () =>
   expect(saveRequestUsage).toHaveBeenCalledTimes(1);
   expect(saveRequestUsage).toHaveBeenCalledWith(expect.objectContaining({
     provider: "ocria", model: "ocria-nano-1", endpoint: "/v1/ocr", apiKey: "test-key",
+    tokens: {}, meta: { ocr: { resultCount: 1 } },
   }));
 });
 
@@ -56,4 +57,13 @@ it("does not count a failed or malformed upstream response", async () => {
   expect((await POST(page("test-key"))).status).toBe(502);
   expect((await POST(page("test-key"))).status).toBe(502);
   expect(saveRequestUsage).not.toHaveBeenCalled();
+});
+
+it("records only the token counters actually supplied by the provider", async () => {
+  const original = JSON.stringify({ results: [], usage: { completion_tokens: 0, prompt_tokens: -1 } });
+  fetch.mockResolvedValue(new Response(original));
+  expect(await (await POST(page("test-key"))).text()).toBe(original);
+  expect(saveRequestUsage).toHaveBeenCalledWith(expect.objectContaining({
+    tokens: { completion_tokens: 0 }, meta: { ocr: { resultCount: 0 } },
+  }));
 });

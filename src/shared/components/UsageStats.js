@@ -72,9 +72,18 @@ function RecentRequests({ requests = [] }) {
                     </td>
                     <td className="py-1.5 font-mono truncate max-w-[120px]" title={r.model}>{r.endpoint === "/v1/ocr" ? r.provider + "/" + r.model : r.model}</td>
                     <td className="py-1.5 text-right whitespace-nowrap">
-                      <span className="text-primary">{fmt(r.promptTokens)}↑</span>
-                      {" "}
-                      <span className="text-success">{fmt(r.completionTokens)}↓</span>
+                      {(!r.ocr || r.promptTokens != null || r.completionTokens != null) && (
+                        <div title="Input / output tokens">
+                          <span className="text-primary">{r.promptTokens == null ? "—" : fmt(r.promptTokens)}↑</span>
+                          {" "}
+                          <span className="text-success">{r.completionTokens == null ? "—" : fmt(r.completionTokens)}↓</span>
+                        </div>
+                      )}
+                      {r.ocr && (
+                        <span title={r.promptTokens == null && r.completionTokens == null ? "Token counts not reported by the OCR provider" : "OCR input and output"}>
+                          1 page{r.ocr.resultCount != null && ` → ${fmt(r.ocr.resultCount)} ${r.ocr.resultCount === 1 ? "result" : "results"}`}
+                        </span>
+                      )}
                     </td>
                     <td className="py-1.5 text-right text-text-muted whitespace-nowrap"><TimeAgo timestamp={r.timestamp} /></td>
                   </tr>

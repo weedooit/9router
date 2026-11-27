@@ -71,6 +71,6 @@ export async function POST(request) {
     return error("OCR provider failed or returned an unexpected page format", 502);
   }
   await saveRequestUsage({ provider: provider.id, model: model.id, apiKey, endpoint: "/v1/ocr",
-    tokens: { prompt_tokens: 0, completion_tokens: 0 }, status: "ok" });
-  return page;
+    tokens: page.tokens, meta: { ocr: { resultCount: page.resultCount } }, status: "ok" });
+  return page.response;
 }

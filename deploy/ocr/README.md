@@ -8,7 +8,7 @@ In **Providers → Add OCR Compatible**, enter a provider name, a unique ID such
 - **OCR results JSON** returns the original UTF-8 JSON bytes, including whitespace and decimal precision. Each entry in `results` must have a string `text`.
 - **Text from a JSON field** selects a string or an array of strings using a path such as `result.text` or `pages.0.lines`. **Plain text** reads the complete response. Both return a TaxHacker-compatible `results` array and preserve the upstream text in `raw`.
 
-TaxHacker uses its application key with `GET /v1/ocr` to list permitted models and `POST /v1/ocr` to submit a multipart `file`. Select the model via the `model` field or `X-OCR-Model` (both must agree when supplied). For example, selecting `ocr-lab/reader` can call the provider's `/ocr2`. Successful pages appear in **Usage** under their provider and model, with zero LLM tokens.
+TaxHacker uses its application key with `GET /v1/ocr` to list permitted models and `POST /v1/ocr` to submit a multipart `file`. Select the model via the `model` field or `X-OCR-Model` (both must agree when supplied). For example, selecting `ocr-lab/reader` can call the provider's `/ocr2`. In **Usage → Recent Requests**, each completed OCR call shows the input page and the number of text results returned. If the provider includes input or output token counts in its JSON `usage` object, those counts also appear. Older OCR calls show the page count alone.
 
 An existing `OCRIA_API_URL` automatically supplies the editable default `ocria/ocria-nano-1`. Its configured URL and native response format work with existing clients. Once saved in Providers, the stored configuration takes precedence over the environment default.
 

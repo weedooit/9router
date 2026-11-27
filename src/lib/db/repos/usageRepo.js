@@ -124,11 +124,11 @@ async function ensureRingInitialized() {
   recentRing.initialized = true;
   try {
     const db = await getAdapter();
-    const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens FROM usageHistory ORDER BY id DESC LIMIT ?`, [RING_CAP]);
+    const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens, meta FROM usageHistory ORDER BY id DESC LIMIT ?`, [RING_CAP]);
     recentRing.items = rows.reverse().map((r) => ({
       timestamp: r.timestamp, provider: r.provider, model: r.model, connectionId: r.connectionId,
       apiKey: r.apiKey, endpoint: r.endpoint, cost: r.cost, status: r.status,
-      tokens: parseJson(r.tokens, {}),
+      tokens: parseJson(r.tokens, {}), meta: parseJson(r.meta, {}),
     }));
   } catch {}
 }
@@ -195,6 +195,24 @@ export function trackPendingRequest(model, provider, connectionId, started, erro
   scheduleStatsEvent("pending");
 }
 
+function toRecentRequest(entry) {
+  const tokens = entry.tokens || {};
+  const ocr = entry.endpoint === "/v1/ocr";
+  const metrics = entry.meta?.ocr;
+  // Older OCR rows recorded placeholder zeroes for both directions.
+  const input = tokens.prompt_tokens ?? tokens.input_tokens;
+  const output = tokens.completion_tokens ?? tokens.output_tokens;
+  const legacyOcr = ocr && !metrics && !input && !output;
+  return {
+    timestamp: entry.timestamp, model: entry.model, provider: entry.provider || "", endpoint: entry.endpoint,
+    promptTokens: legacyOcr ? null : input ?? (ocr ? null : 0),
+    completionTokens: legacyOcr ? null : output ?? (ocr ? null : 0),
+    cachedTokens: tokens.cached_tokens || tokens.cache_read_input_tokens || 0,
+    status: entry.status || "ok",
+    ...(ocr ? { ocr: { pages: 1, resultCount: metrics?.resultCount ?? null } } : {}),
+  };
+}
+
 export async function getActiveRequests() {
   const activeRequests = [];
   const connectionMap = await getConnectionMapCached();
@@ -217,15 +235,7 @@ export async function getActiveRequests() {
   const seen = new Set();
   const recentRequests = [...recentRing.items]
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-    .map((e) => {
-      const t = e.tokens || {};
-      return {
-        timestamp: e.timestamp, model: e.model, provider: e.provider || "", endpoint: e.endpoint,
-        promptTokens: t.prompt_tokens || t.input_tokens || 0,
-        completionTokens: t.completion_tokens || t.output_tokens || 0,
-        status: e.status || "ok",
-      };
-    })
+    .map(toRecentRequest)
     .filter((e) => {
       if (e.endpoint === "/v1/ocr") return true;
       if (e.promptTokens === 0 && e.completionTokens === 0) return false;
@@ -288,7 +298,7 @@ export async function saveRequestUsage(entry) {
           entry.timestamp, entry.provider || null, entry.model || null,
           entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
           promptTokens, completionTokens, entry.cost || 0, entry.status || "ok",
-          stringifyJson(tokens), stringifyJson({}),
+          stringifyJson(tokens), stringifyJson(entry.meta?.ocr ? { ocr: entry.meta.ocr } : {}),
         ]
       );
 
@@ -328,12 +338,13 @@ export async function getUsageHistory(filter = {}) {
   if (filter.endDate) { conds.push("timestamp <= ?"); params.push(new Date(filter.endDate).toISOString()); }
 
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
-  const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens FROM usageHistory ${where} ORDER BY id ASC`, params);
+  const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens, meta FROM usageHistory ${where} ORDER BY id ASC`, params);
 
   return rows.map((r) => ({
     timestamp: r.timestamp, provider: r.provider, model: r.model,
     connectionId: r.connectionId, apiKeyMasked: maskApiKey(r.apiKey), endpoint: r.endpoint,
     cost: r.cost, status: r.status, tokens: parseJson(r.tokens, {}),
+    ...(r.endpoint === "/v1/ocr" ? { ocr: parseJson(r.meta, {})?.ocr ?? null } : {}),
   }));
 }
 
@@ -378,19 +389,10 @@ export async function getUsageStats(period = "all") {
   }
 
   // recentRequests from live history (last 100 entries enough for 20 deduped)
-  const recentRows = db.all(`SELECT timestamp, provider, model, tokens, status, endpoint FROM usageHistory ORDER BY id DESC LIMIT 100`);
+  const recentRows = db.all(`SELECT timestamp, provider, model, tokens, status, endpoint, meta FROM usageHistory ORDER BY id DESC LIMIT 100`);
   const seen = new Set();
   const recentRequests = recentRows
-    .map((r) => {
-      const t = parseJson(r.tokens, {}) || {};
-      return {
-        timestamp: r.timestamp, model: r.model, provider: r.provider || "", endpoint: r.endpoint,
-        promptTokens: t.prompt_tokens || t.input_tokens || 0,
-        completionTokens: t.completion_tokens || t.output_tokens || 0,
-        cachedTokens: t.cached_tokens || t.cache_read_input_tokens || 0,
-        status: r.status || "ok",
-      };
-    })
+    .map(r => toRecentRequest({ ...r, tokens: parseJson(r.tokens, {}), meta: parseJson(r.meta, {}) }))
     .filter((e) => {
       if (e.endpoint === "/v1/ocr") return true;
       if (e.promptTokens === 0 && e.completionTokens === 0) return false;

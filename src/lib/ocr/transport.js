@@ -53,17 +53,20 @@ export async function upstreamRequest(provider, model, file, signal) {
 
 export function pageResponse(model, raw) {
   const source = raw.toString("utf8");
+  const json = model.responseFormat === "text" ? null : JSON.parse(source);
+  let resultCount;
   let payload;
   if (model.responseFormat === "results") {
-    const page = JSON.parse(source);
+    const page = json;
     if (!Array.isArray(page?.results) || !page.results.every(row => typeof row?.text === "string")) {
       throw new Error("Missing OCR results");
     }
+    resultCount = page.results.length;
     payload = raw;
   } else {
     let text = source;
     if (model.responseFormat === "json-text") {
-      text = JSON.parse(source);
+      text = json;
       for (const key of model.textPath.split(".")) {
         if (text == null || !Object.hasOwn(text, key)) throw new Error("Missing OCR text");
         text = text[key];
@@ -71,7 +74,15 @@ export function pageResponse(model, raw) {
     }
     const lines = Array.isArray(text) ? text : [text];
     if (!lines.every(line => typeof line === "string")) throw new Error("Invalid OCR text");
+    resultCount = lines.length;
     payload = JSON.stringify({ results: lines.map(line => ({ text: line })), raw: source });
   }
-  return new Response(payload, { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+  const tokens = {};
+  const usage = json?.usage;
+  const input = usage?.prompt_tokens ?? usage?.input_tokens;
+  const output = usage?.completion_tokens ?? usage?.output_tokens;
+  if (Number.isSafeInteger(input) && input >= 0) tokens.prompt_tokens = input;
+  if (Number.isSafeInteger(output) && output >= 0) tokens.completion_tokens = output;
+  const response = new Response(payload, { headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
+  return { response, resultCount, tokens };
 }

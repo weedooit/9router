@@ -7,7 +7,7 @@ import { afterAll, beforeAll, expect, it, vi } from "vitest";
 let admin, gateway, db, key, origin, server, directory, config;
 const calls = [];
 const raw = '{ "results" : [{"text":"TVA 7,010","confidence":0.990000000000000001}] }\n';
-const jsonPage = '{ "result":{"lines":["TVA 7,010","Total 43,816"]},"score":0.999999999999999999 }\n';
+const jsonPage = '{ "result":{"lines":["TVA 7,010","Total 43,816"]},"usage":{"input_tokens":0,"output_tokens":12},"score":0.999999999999999999 }\n';
 const pageBytes = Uint8Array.of(0, 170, 255, 12);
 const adminRequest = body => new Request("http://gateway.test/api/provider-nodes/ocr", {
   method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
@@ -83,12 +83,12 @@ it("sends a nested JSON request to /ocr2 with the provider key and records real 
     const stats = await (await GET(new Request("http://gateway.test/api/usage/stats?period=" + period))).json();
     expect(stats.byProvider["ocr-lab"].requests).toBe(1);
     expect(Object.values(stats.byModel)).toContainEqual(expect.objectContaining({
-      rawModel: "reader", provider: "Invoice Lab", requests: 1, promptTokens: 0, completionTokens: 0,
+      rawModel: "reader", provider: "Invoice Lab", requests: 1, promptTokens: 0, completionTokens: 12,
     }));
-    expect(stats.recentRequests).toContainEqual(expect.objectContaining({ provider: "ocr-lab", model: "reader" }));
+    expect(stats.recentRequests).toContainEqual(expect.objectContaining({ provider: "ocr-lab", model: "reader", promptTokens: 0, completionTokens: 12, ocr: { pages: 1, resultCount: 2 } }));
   }
   const live = await db.getActiveRequests();
-  expect(live.recentRequests).toContainEqual(expect.objectContaining({ provider: "ocr-lab", model: "reader" }));
+  expect(live.recentRequests).toContainEqual(expect.objectContaining({ provider: "ocr-lab", model: "reader", promptTokens: 0, completionTokens: 12, ocr: { pages: 1, resultCount: 2 } }));
 });
 
 it("routes a second model of the same provider to its own binary/plain-text endpoint", async () => {
@@ -142,4 +142,19 @@ it("counts simultaneous pages separately even if their usage timestamps match", 
     timestamp: new Date().toISOString(), tokens: { prompt_tokens: 0, completion_tokens: 0 }, status: "ok" };
   await Promise.all([db.saveRequestUsage({ ...entry }), db.saveRequestUsage({ ...entry })]);
   expect((await db.getUsageHistory()).filter(row => row.model === "parallel")).toHaveLength(2);
+});
+
+it("keeps unmetered pages visible and distinguishes older placeholder zeros from reported zeros", async () => {
+  const response = await gateway.POST(request("ocria/ocria-nano-1"));
+  expect(await response.text()).toBe(raw);
+  await db.saveRequestUsage({ provider: "ocr-old", model: "legacy", endpoint: "/v1/ocr",
+    tokens: { prompt_tokens: 0, completion_tokens: 0 }, status: "ok" });
+  for (const snapshot of [await db.getUsageStats("all"), await db.getActiveRequests()]) {
+    expect(snapshot.recentRequests).toContainEqual(expect.objectContaining({
+      provider: "ocria", promptTokens: null, completionTokens: null, ocr: { pages: 1, resultCount: 1 },
+    }));
+    expect(snapshot.recentRequests).toContainEqual(expect.objectContaining({
+      provider: "ocr-old", promptTokens: null, completionTokens: null, ocr: { pages: 1, resultCount: null },
+    }));
+  }
 });
